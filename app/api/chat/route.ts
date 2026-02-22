@@ -6,10 +6,12 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { generateSQL, humanizeResults, validateSQL } from "@/lib/ai-service"
+import { generateSQL, evaluateAndRespond, validateSQL, saveChatLog } from "@/lib/ai-service"
 
 function normalizeSQLForRPC(sql: string): string {
   return sql
+    .replace(/^```(sql)?/i, '') // Limpiar markdown inicial
+    .replace(/```$/i, '')       // Limpiar markdown final
     .trim()
     .replace(/[;\s]+$/g, "")
 }
@@ -84,7 +86,11 @@ async function getNextOpponentId(
 // ── Main handler ─────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now()
+  console.log("[HoopsAI][TIME] ⏱️ POST /api/chat recibido en el servidor")
+  
   try {
+    console.log("[HoopsAI][TIME] Extrayendo headers...")
     // 1. Extract and validate auth
     const authHeader = req.headers.get("authorization")
     if (!authHeader?.startsWith("Bearer ")) {
@@ -96,8 +102,11 @@ export async function POST(req: NextRequest) {
     const accessToken = authHeader.slice(7)
 
     // 2. Parse request body
+    console.log("[HoopsAI][TIME] Parseando body JSON...")
     const body = await req.json()
     const { question } = body as { question: string }
+
+    console.log("[HoopsAI][TIME] Inicio de solicitud")
 
     if (!question?.trim()) {
       return NextResponse.json(
@@ -140,106 +149,183 @@ export async function POST(req: NextRequest) {
     const opponentTeamId = await getNextOpponentId(supabase, userTeamId)
 
     // 6. Call AI service to generate SQL
-    const aiResponse = await generateSQL(question, userTeamId, opponentTeamId)
+    let t1 = Date.now()
+    let aiResponse = await generateSQL(question, userTeamId, opponentTeamId)
+    console.log(`[HoopsAI][TIME] generateSQL tardó ${Date.now() - t1}ms`)
 
-    // 7. If no SQL needed (conversational response)
-    if (!aiResponse.sql) {
-      return NextResponse.json({
-        type: "conversational",
-        answer: aiResponse.tactical_context,
-        thought: aiResponse.thought,
-        data: null,
-      })
+    interface IterationLog {
+      iteration: number
+      thought: string
+      sql: string | null
+      result?: string
     }
 
-    const normalizedSql = normalizeSQLForRPC(aiResponse.sql)
+    let iterations = 0
+    const maxIterations = 3
+    let finalHumanAnswer = ""
+    let finalRows: Record<string, unknown>[] = []
+    let finalSql = ""
+    let finalThought = ""
+    let finalTacticalContext = ""
+    const iterationHistories: IterationLog[] = []
 
-    // 8. Validate SQL safety
-    const validation = validateSQL(normalizedSql)
-    if (!validation.valid) {
-      return NextResponse.json({
-        type: "error",
-        answer: `🛡️ Consulta bloqueada: ${validation.error}`,
+    while (iterations < maxIterations) {
+      iterations++
+
+      // Log iteration start
+      iterationHistories.push({
+        iteration: iterations,
         thought: aiResponse.thought,
-        data: null,
+        sql: aiResponse.sql,
       })
-    }
 
-    const scopeValidation = validateTeamScopeSQL(
-      normalizedSql,
-      userTeamId,
-      opponentTeamId,
-    )
-    if (!scopeValidation.valid) {
-      console.warn("[HoopsAI][SECURITY][SQL_SCOPE_BLOCKED]", {
-        userId: user.id,
+      // 7. If no SQL needed (conversational response)
+      if (!aiResponse.sql) {
+        return NextResponse.json({
+          type: "conversational",
+          answer: aiResponse.tactical_context,
+          thought: aiResponse.thought,
+          data: null,
+          iterations: iterationHistories,
+        })
+      }
+
+      const normalizedSql = normalizeSQLForRPC(aiResponse.sql)
+      finalSql = normalizedSql
+      finalThought = aiResponse.thought
+      finalTacticalContext = aiResponse.tactical_context
+
+      console.log("[HoopsAI][SQL_NORMALIZED]", normalizedSql)
+
+      // 8. Validate SQL safety
+      const validation = validateSQL(normalizedSql)
+      if (!validation.valid) {
+        return NextResponse.json({
+          type: "error",
+          answer: `🛡️ Consulta bloqueada: ${validation.error}`,
+          thought: aiResponse.thought,
+          data: null,
+          iterations: iterationHistories,
+        })
+      }
+
+      const scopeValidation = validateTeamScopeSQL(
+        normalizedSql,
         userTeamId,
         opponentTeamId,
-        reason: scopeValidation.error,
-        sql: normalizedSql,
-      })
-
-      return NextResponse.json({
-        type: "error",
-        answer: `🛡️ Consulta bloqueada: ${scopeValidation.error}`,
-        thought: aiResponse.thought,
-        data: null,
-      })
-    }
-
-    // 9. Execute SQL via RPC
-    const { data: queryResult, error: rpcError } = await supabase.rpc(
-      "execute_coach_query",
-      { sql_query: normalizedSql },
-    )
-
-    if (rpcError) {
-      console.error("RPC Error:", rpcError)
-      return NextResponse.json({
-        type: "error",
-        answer: `❌ Error al ejecutar la consulta: ${rpcError.message}. Intenta reformular tu pregunta.`,
-        thought: aiResponse.thought,
-        sql: normalizedSql,
-        data: null,
-      })
-    }
-
-    // 10. Parse results
-    const rows: Record<string, unknown>[] = Array.isArray(queryResult)
-      ? queryResult
-      : queryResult
-        ? [queryResult]
-        : []
-
-    // 11. Humanize the results with a second AI call
-    let humanAnswer: string
-    try {
-      humanAnswer = await humanizeResults(
-        question,
-        normalizedSql,
-        rows,
-        aiResponse.thought,
-        aiResponse.tactical_context,
       )
-    } catch (humanizeError) {
-      console.error("Humanize error:", humanizeError)
-      // Fallback: return raw data with thought context
-      humanAnswer = rows.length > 0
-        ? `📊 **Resultados encontrados** (${rows.length} filas)\n\n${aiResponse.tactical_context}`
-        : `No se encontraron datos para tu consulta. ${aiResponse.tactical_context}`
+      if (!scopeValidation.valid) {
+        console.warn("[HoopsAI][SECURITY][SQL_SCOPE_BLOCKED]", {
+          userId: user.id,
+          userTeamId,
+          opponentTeamId,
+          reason: scopeValidation.error,
+          sql: normalizedSql,
+        })
+
+        return NextResponse.json({
+          type: "error",
+          answer: `🛡️ Consulta bloqueada: ${scopeValidation.error}`,
+          thought: aiResponse.thought,
+          data: null,
+          iterations: iterationHistories,
+        })
+      }
+
+      // 9. Execute SQL via RPC
+      console.log("[HoopsAI][EXECUTING_SQL]", normalizedSql)
+      let t2 = Date.now()
+      const { data: queryResult, error: rpcError } = await supabase.rpc(
+        "execute_coach_query",
+        { sql_query: normalizedSql },
+      )
+      console.log(`[HoopsAI][TIME] RPC execution tardó ${Date.now() - t2}ms`)
+      if (rpcError) {
+        console.error("[HoopsAI][SQL_ERROR]", { sql: normalizedSql, error: rpcError.message })
+      } else {
+        console.log("[HoopsAI][SQL_SUCCESS]", `Filas retornadas: ${Array.isArray(queryResult) ? queryResult.length : queryResult ? 1 : 0}`)
+      }
+
+      // 10. Parse results
+      const rows: Record<string, unknown>[] = Array.isArray(queryResult)
+        ? queryResult
+        : queryResult
+          ? [queryResult]
+          : []
+      finalRows = rows
+
+      // 11. Evaluate the results with a second AI call
+      try {
+        let t3 = Date.now()
+        const evaluation = await evaluateAndRespond(
+          question,
+          normalizedSql,
+          rpcError ? rpcError.message : null,
+          rows,
+          aiResponse.thought,
+          aiResponse.tactical_context,
+          userTeamId,
+          opponentTeamId
+        )
+        console.log(`[HoopsAI][TIME] evaluateAndRespond tardó ${Date.now() - t3}ms`)
+
+        if (evaluation.satisfactory) {
+          finalHumanAnswer = evaluation.response || "No se pudo generar una respuesta."
+          break
+        } else {
+          if (iterations >= maxIterations) {
+            finalHumanAnswer = evaluation.response || "No se pudo encontrar la información después de varios intentos."
+            break
+          }
+          // Retry with new SQL
+          if (evaluation.new_sql) {
+            console.log("[HoopsAI][RETRY_SQL]", evaluation.new_sql)
+            aiResponse = {
+              sql: evaluation.new_sql,
+              thought: "Reintentando con nueva consulta basada en la evaluación.",
+              tactical_context: aiResponse.tactical_context
+            }
+          } else {
+            finalHumanAnswer = evaluation.response || "No se pudo encontrar la información."
+            break
+          }
+        }
+      } catch (evalError) {
+        console.error("Evaluation error:", evalError)
+        // Fallback: return raw data with thought context
+        finalHumanAnswer = rows.length > 0
+          ? `📊 **Resultados encontrados** (${rows.length} filas)\n\n${aiResponse.tactical_context}`
+          : `No se encontraron datos para tu consulta. ${aiResponse.tactical_context}`
+        break
+      }
     }
 
-    // 12. Return complete response
+    // 12. Save chat log (fire-and-forget for non-blocking)
+    saveChatLog(
+      supabase,
+      user.id,
+      question,
+      finalThought,
+      finalSql,
+      finalHumanAnswer,
+      iterations,
+    ).catch(err => console.error("Error saving chat log:", err))
+
+    console.log(`[HoopsAI][TIME] Tiempo total de solicitud: ${Date.now() - startTime}ms`)
+
+    // 13. Return complete response
     return NextResponse.json({
       type: "data",
-      answer: humanAnswer,
-      thought: aiResponse.thought,
-      tactical_context: aiResponse.tactical_context,
-      sql: normalizedSql,
-      data: rows,
+      answer: finalHumanAnswer,
+      thought: finalThought,
+      tactical_context: finalTacticalContext,
+      sql: finalSql,
+      data: finalRows,
+      iterations: iterationHistories,
     })
   } catch (error) {
-    console.error("Chat API Error:", error)
+    console.error("[HoopsAI][ERROR] Error en POST /api/chat:", error)
+    console.error("[HoopsAI][ERROR] Stack:", error instanceof Error ? error.stack : "N/A")
     const message =
       error instanceof Error ? error.message : "Error interno del servidor"
     return NextResponse.json(

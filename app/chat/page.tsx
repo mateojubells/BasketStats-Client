@@ -14,7 +14,7 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
+import { cn, generateId } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 
@@ -167,6 +167,7 @@ export default function ChatPage() {
   const [showSql, setShowSql] = useState<string | null>(null)
 
   const listBottomRef = useRef<HTMLDivElement>(null)
+  const pendingRequestRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     listBottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -178,13 +179,13 @@ export default function ChatPage() {
       if (!question || isLoading || !session) return
 
       const userMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         role: "user",
         content: question,
         timestamp: new Date(),
       }
 
-      const loadingId = crypto.randomUUID()
+      const loadingId = generateId()
       const loadingMsg: ChatMessage = {
         id: loadingId,
         role: "assistant",
@@ -197,21 +198,40 @@ export default function ChatPage() {
       setInput("")
       setIsLoading(true)
 
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), 45000)
+      pendingRequestRef.current = controller
+
       try {
-        const {
-          data: { session: currentSession },
-        } = await supabase.auth.getSession()
+        let accessToken = session.access_token
+        if (!accessToken) {
+          const {
+            data: { session: currentSession },
+          } = await supabase.auth.getSession()
+          accessToken = currentSession?.access_token ?? ""
+        }
+
+        if (!accessToken) {
+          throw new Error("Sesión inválida. Vuelve a iniciar sesión.")
+        }
 
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${currentSession?.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ question }),
+          signal: controller.signal,
         })
 
-        const data = await res.json()
+        const data = await res.json().catch(() => null)
+
+        if (!res.ok) {
+          throw new Error(
+            data?.error || data?.answer || "No se pudo procesar tu pregunta en este momento.",
+          )
+        }
 
         const assistantMsg: ChatMessage = {
           id: loadingId,
@@ -226,14 +246,22 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((msg) => (msg.id === loadingId ? assistantMsg : msg)),
         )
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "⚠️ Error de conexión. Revisa tu sesión y vuelve a intentarlo."
+
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === loadingId
               ? {
                   ...msg,
-                  content:
-                    "⚠️ Error de conexión. Revisa tu sesión y vuelve a intentarlo.",
+                  content: `⚠️ ${errorMessage}`,
                   type: "error",
                   isLoading: false,
                 }
@@ -241,6 +269,10 @@ export default function ChatPage() {
           ),
         )
       } finally {
+        window.clearTimeout(timeoutId)
+        if (pendingRequestRef.current === controller) {
+          pendingRequestRef.current = null
+        }
         setIsLoading(false)
       }
     },
@@ -260,9 +292,19 @@ export default function ChatPage() {
   }
 
   const clearChat = () => {
+    pendingRequestRef.current?.abort()
+    pendingRequestRef.current = null
+    setIsLoading(false)
+    setInput("")
     setMessages([])
     setShowSql(null)
   }
+
+  useEffect(() => {
+    return () => {
+      pendingRequestRef.current?.abort()
+    }
+  }, [])
 
   return (
     <DashboardLayout>
@@ -280,7 +322,7 @@ export default function ChatPage() {
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={clearChat} disabled={!messages.length}>
+          <Button variant="outline" size="sm" type="button" onClick={clearChat} disabled={!messages.length}>
             <RotateCcw className="mr-2 h-4 w-4" />
             Limpiar
           </Button>

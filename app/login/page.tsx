@@ -14,13 +14,19 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [teams, setTeams] = useState<Team[]>([])
+  const [mounted, setMounted] = useState(false)
 
-  // Si hay sesión activa, redirige al dashboard
+  // Marca que el componente está montado en el cliente
   useEffect(() => {
-    if (!loading && session) {
+    setMounted(true)
+  }, [])
+
+  // Si hay sesión activa, redirige al dashboard (solo después de montaje)
+  useEffect(() => {
+    if (mounted && !loading && session) {
       router.replace("/")
     }
-  }, [loading, session, router])
+  }, [mounted, loading, session, router])
 
   useEffect(() => {
     getAllTeams().then(setTeams)
@@ -71,6 +77,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              suppressHydrationWarning
               className="h-10 w-full rounded-lg border border-border bg-secondary px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="coach@club.com"
             />
@@ -86,6 +93,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
+              suppressHydrationWarning
               className="h-10 w-full rounded-lg border border-border bg-secondary px-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="••••••••"
             />

@@ -12,14 +12,28 @@ import {
   Bot,
   User,
   RotateCcw,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 
 // ── Types ────────────────────────────────────────────────────
+
+interface IterationLog {
+  iteration: number
+  thought: string
+  sql: string | null
+  result?: string
+}
 
 interface ChatMessage {
   id: string
@@ -31,6 +45,7 @@ interface ChatMessage {
   thought?: string
   type?: "conversational" | "data" | "error"
   isLoading?: boolean
+  iterations?: IterationLog[]
 }
 
 // ── Suggested questions ──────────────────────────────────────
@@ -262,9 +277,11 @@ export function HoopsAIChat() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [showSql, setShowSql] = useState<string | null>(null)
+  const [expandedThinking, setExpandedThinking] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const isLoadingRef = useRef(false)
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -278,12 +295,31 @@ export function HoopsAIChat() {
     if (isOpen && inputRef.current) {
       inputRef.current.focus()
     }
+    
+    // Test connectivity when opening
+    if (isOpen) {
+      console.log("[HoopsAI][CLIENT] Chat abierto, probando conectividad...")
+      fetch("/api/health")
+        .then(res => res.json())
+        .then(data => console.log("[HoopsAI][CLIENT] ✅ Servidor respondió:", data))
+        .catch(err => console.error("[HoopsAI][CLIENT] ❌ Servidor NO responde:", err))
+    }
   }, [isOpen])
+
+  // Sincronizar ref con estado
+  useEffect(() => {
+    isLoadingRef.current = isLoading
+  }, [isLoading])
 
   const sendMessage = useCallback(
     async (text: string) => {
-      if (!text.trim() || isLoading || !session) return
+      if (!text.trim() || isLoadingRef.current || !session) {
+        console.log("[HoopsAI][CLIENT] Mensaje no enviado - isLoading:", isLoadingRef.current, "session:", !!session, "text:", !!text.trim())
+        return
+      }
 
+      console.log("[HoopsAI][CLIENT] ✅ Iniciando envío de mensaje")
+      
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -302,22 +338,49 @@ export function HoopsAIChat() {
       setMessages((prev) => [...prev, userMsg, loadingMsg])
       setInput("")
       setIsLoading(true)
+      isLoadingRef.current = true
 
       try {
+        console.log("[HoopsAI][CLIENT] Enviando mensaje:", text.trim())
         const {
           data: { session: currentSession },
         } = await supabase.auth.getSession()
 
+        if (!currentSession?.access_token) {
+          throw new Error("No hay token de acceso disponible")
+        }
+
+        console.log("[HoopsAI][CLIENT] Token obtenido, haciendo fetch...")
+        const startFetch = Date.now()
+        
+        // Timeout de seguridad: 30 segundos
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => {
+          console.error("[HoopsAI][CLIENT] ⏱️ TIMEOUT: la solicitud tardó más de 30 segundos")
+          controller.abort()
+        }, 30000)
+        
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${currentSession?.access_token}`,
+            Authorization: `Bearer ${currentSession.access_token}`,
           },
           body: JSON.stringify({ question: text.trim() }),
+          signal: controller.signal,
         })
 
+        clearTimeout(timeoutId)
+        const fetchTime = Date.now() - startFetch
+        console.log(`[HoopsAI][CLIENT] Fetch completó en ${fetchTime}ms, status: ${res.status}`)
+
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.error || `Error ${res.status}: ${res.statusText}`)
+        }
+
         const data = await res.json()
+        console.log("[HoopsAI][CLIENT] Respuesta recibida:", data)
 
         const assistantMsg: ChatMessage = {
           id: loadingMsg.id,
@@ -328,19 +391,29 @@ export function HoopsAIChat() {
           sql: data.sql,
           thought: data.thought,
           type: data.type,
+          iterations: data.iterations,
         }
 
         setMessages((prev) =>
           prev.map((m) => (m.id === loadingMsg.id ? assistantMsg : m)),
         )
-      } catch {
+      } catch (error) {
+        console.error("[HoopsAI][CLIENT] Error:", error)
+        
+        let errorMessage = error instanceof Error ? error.message : String(error)
+        
+        // Detectar timeout
+        if (error instanceof Error && error.name === "AbortError") {
+          errorMessage = "⏱️ Tiempo agotado (30 segundos). El servidor no respondió a tiempo. Intenta de nuevo o contacta al administrador."
+        }
+        
         setMessages((prev) =>
           prev.map((m) =>
             m.id === loadingMsg.id
               ? {
                   ...m,
                   content:
-                    "⚠️ Error de conexión. Verifica tu conexión a internet e intenta de nuevo.",
+                    `⚠️ Error: ${errorMessage}\n\nIntenta:\n1. Verificar tu conexión a internet\n2. Recargar la página\n3. Abrir la consola para más detalles (F12 → Console)`,
                   isLoading: false,
                   type: "error" as const,
                 }
@@ -349,9 +422,10 @@ export function HoopsAIChat() {
         )
       } finally {
         setIsLoading(false)
+        isLoadingRef.current = false
       }
     },
-    [isLoading, session],
+    [session],
   )
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -367,8 +441,13 @@ export function HoopsAIChat() {
   }
 
   const clearChat = () => {
+    console.log("[HoopsAI][CLIENT] Limpiando chat...")
     setMessages([])
     setShowSql(null)
+    setExpandedThinking(null)
+    setIsLoading(false)
+    isLoadingRef.current = false
+    setInput("")
   }
 
   if (!session || !team) return null
@@ -516,8 +595,52 @@ export function HoopsAIChat() {
                         <DataTable data={msg.data} />
                       )}
 
-                      {/* SQL toggle */}
-                      {msg.sql && (
+                      {/* Thinking process (iterations) */}
+                      {msg.iterations && msg.iterations.length > 0 && (
+                        <div className="mt-2 border-t border-border/30 pt-2">
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="thinking" className="border-none">
+                              <AccordionTrigger className="py-1.5 px-0 hover:no-underline text-xs text-muted-foreground hover:text-foreground">
+                                🧠 Ver razonamiento ({msg.iterations.length} iteración{msg.iterations.length > 1 ? 'es' : ''})
+                              </AccordionTrigger>
+                              <AccordionContent className="pt-2 pb-0 px-0">
+                                <div className="space-y-3 text-[10px]">
+                                  {msg.iterations.map((iter, idx) => (
+                                    <div key={idx} className="rounded-md bg-muted/30 p-2 border border-border/30">
+                                      <div className="font-mono font-semibold text-muted-foreground mb-1">
+                                        Iteración {iter.iteration}
+                                      </div>
+                                      <details className="cursor-pointer group">
+                                        <summary className="hover:text-foreground text-muted-foreground flex items-center gap-1">
+                                          <ChevronRight className="h-3 w-3 group-open:rotate-90 transition-transform" />
+                                          Pensamiento
+                                        </summary>
+                                        <pre className="mt-1 whitespace-pre-wrap overflow-x-auto text-[9px] bg-zinc-900 rounded p-1.5 text-amber-300">
+                                          {iter.thought}
+                                        </pre>
+                                      </details>
+                                      {iter.sql && (
+                                        <details className="cursor-pointer group mt-1">
+                                          <summary className="hover:text-foreground text-muted-foreground flex items-center gap-1">
+                                            <ChevronRight className="h-3 w-3 group-open:rotate-90 transition-transform" />
+                                            SQL Generado
+                                          </summary>
+                                          <pre className="mt-1 overflow-x-auto bg-zinc-900 rounded p-1.5 text-green-400 font-mono text-[9px]">
+                                            {iter.sql}
+                                          </pre>
+                                        </details>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
+                      )}
+
+                      {/* SQL toggle (final) */}
+                      {msg.sql && !msg.iterations && (
                         <div className="mt-2 border-t border-border/30 pt-2">
                           <button
                             onClick={() =>

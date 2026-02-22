@@ -9,7 +9,7 @@ import {
 } from "react"
 import { supabase } from "@/lib/supabase"
 import type { AppUser, Team } from "@/lib/types"
-import type { Session, User } from "@supabase/supabase-js"
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js"
 
 interface AuthState {
   session: Session | null
@@ -52,88 +52,116 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const { error } = await supabase.from("users").upsert(
-      {
-        id: currentUser.id,
-        email: currentUser.email ?? "",
-        display_name: displayName,
-        team_id: teamId,
-      },
-      { onConflict: "id" },
-    )
+    try {
+      const { error } = await supabase.from("users").upsert(
+        {
+          id: currentUser.id,
+          email: currentUser.email ?? "",
+          display_name: displayName,
+          team_id: teamId,
+        },
+        { onConflict: "id" },
+      )
 
-    if (error) {
-      console.error("Error creando/sincronizando perfil de usuario:", error.message)
+      if (error) {
+        console.error("Error creando/sincronizando perfil de usuario:", error.message)
+      }
+    } catch (err) {
+      console.error("Exception en ensureProfileForUser:", err)
     }
   }
 
   /* ── Fetch the user row & associated team from public.users ── */
   async function fetchProfile(uid: string) {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*, team:teams(*)")
-      .eq("id", uid)
-      .maybeSingle()
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*, team:teams(*)")
+        .eq("id", uid)
+        .maybeSingle()
 
-    if (error) {
+      if (error) {
+        console.error("Error fetching profile:", error.message)
+        setProfile(null)
+        setTeam(null)
+        return
+      }
+
+      if (data) {
+        const { team: teamData, ...rest } = data as AppUser & { team: Team }
+        setProfile(rest as AppUser)
+        setTeam(teamData ?? null)
+        return
+      }
+
+      setProfile(null)
+      setTeam(null)
+    } catch (err) {
+      console.error("Exception en fetchProfile:", err)
+    }
+  }
+
+  async function syncAuthState(event: AuthChangeEvent | "INITIAL", currentSession: Session | null) {
+    setSession(currentSession)
+    setUser(currentSession?.user ?? null)
+
+    if (!currentSession?.user) {
       setProfile(null)
       setTeam(null)
       return
     }
 
-    if (data) {
-      const { team: teamData, ...rest } = data as AppUser & { team: Team }
-      setProfile(rest as AppUser)
-      setTeam(teamData ?? null)
-      return
+    if (event === "SIGNED_IN" || event === "USER_UPDATED" || event === "INITIAL") {
+      await ensureProfileForUser(currentSession.user)
     }
 
-    setProfile(null)
-    setTeam(null)
+    await fetchProfile(currentSession.user.id)
   }
 
   /* ── Bootstrap: check existing session ── */
   useEffect(() => {
-    let isMounted = true
+    let cancelled = false
 
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (!isMounted) return
+    const initAuth = async () => {
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession()
 
-      setSession(s)
-      setUser(s?.user ?? null)
-
-      if (s?.user) {
-        await ensureProfileForUser(s.user)
-        await fetchProfile(s.user.id)
-      } else {
-        setProfile(null)
-        setTeam(null)
+        if (cancelled) return
+        await syncAuthState("INITIAL", s)
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Error en initAuth:", err)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
+    }
 
-      if (isMounted) setLoading(false)
-    })
+    initAuth()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, s) => {
-      if (!isMounted) return
-
-      setSession(s)
-      setUser(s?.user ?? null)
-
-      if (s?.user) {
-        await ensureProfileForUser(s.user)
-        await fetchProfile(s.user.id)
-      } else {
-        setProfile(null)
-        setTeam(null)
-      }
-
-      if (isMounted) setLoading(false)
+    } = supabase.auth.onAuthStateChange((event, s) => {
+      void (async () => {
+        if (cancelled) return
+        try {
+          await syncAuthState(event, s)
+        } catch (err) {
+          if (!cancelled) {
+            console.error("Error en onAuthStateChange:", err)
+          }
+        } finally {
+          if (!cancelled) {
+            setLoading(false)
+          }
+        }
+      })()
     })
 
     return () => {
-      isMounted = false
+      cancelled = true
       subscription.unsubscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,26 +180,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     displayName: string,
     teamId: number,
   ) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: getEmailRedirectUrl(),
-        data: {
-          display_name: displayName,
-          team_id: teamId,
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: getEmailRedirectUrl(),
+          data: {
+            display_name: displayName,
+            team_id: teamId,
+          },
         },
-      },
-    })
+      })
 
-    if (error) return error.message
+      if (error) return error.message
 
-    if (data.user && data.session) {
-      await ensureProfileForUser(data.user)
-      await fetchProfile(data.user.id)
+      if (data.user && data.session) {
+        await ensureProfileForUser(data.user)
+        await fetchProfile(data.user.id)
+      }
+
+      return null
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return "Operación cancelada"
+      }
+      console.error("Error en signUp:", err)
+      return "Error al crear cuenta"
     }
-
-    return null
   }
 
   /* ── Sign out ── */
