@@ -24,6 +24,15 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined)
 
+function getEmailRedirectUrl() {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/callback`
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  return siteUrl ? `${siteUrl.replace(/\/$/, "")}/auth/callback` : undefined
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
@@ -31,43 +40,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [team, setTeam] = useState<Team | null>(null)
   const [loading, setLoading] = useState(true)
 
+  async function ensureProfileForUser(currentUser: User) {
+    const displayName =
+      (currentUser.user_metadata?.display_name as string | undefined) ??
+      (currentUser.user_metadata?.full_name as string | undefined) ??
+      null
+    const teamIdRaw = currentUser.user_metadata?.team_id
+    const teamId = typeof teamIdRaw === "number" ? teamIdRaw : Number(teamIdRaw)
+
+    if (!displayName || !Number.isFinite(teamId) || teamId <= 0) {
+      return
+    }
+
+    const { error } = await supabase.from("users").upsert(
+      {
+        id: currentUser.id,
+        email: currentUser.email ?? "",
+        display_name: displayName,
+        team_id: teamId,
+      },
+      { onConflict: "id" },
+    )
+
+    if (error) {
+      console.error("Error creando/sincronizando perfil de usuario:", error.message)
+    }
+  }
+
   /* ── Fetch the user row & associated team from public.users ── */
   async function fetchProfile(uid: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("users")
       .select("*, team:teams(*)")
       .eq("id", uid)
-      .single()
+      .maybeSingle()
+
+    if (error) {
+      setProfile(null)
+      setTeam(null)
+      return
+    }
 
     if (data) {
       const { team: teamData, ...rest } = data as AppUser & { team: Team }
       setProfile(rest as AppUser)
       setTeam(teamData ?? null)
+      return
     }
+
+    setProfile(null)
+    setTeam(null)
   }
 
   /* ── Bootstrap: check existing session ── */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    let isMounted = true
+
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      if (!isMounted) return
+
       setSession(s)
       setUser(s?.user ?? null)
-      if (s?.user) fetchProfile(s.user.id)
-      setLoading(false)
+
+      if (s?.user) {
+        await ensureProfileForUser(s.user)
+        await fetchProfile(s.user.id)
+      } else {
+        setProfile(null)
+        setTeam(null)
+      }
+
+      if (isMounted) setLoading(false)
     })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange(async (_event, s) => {
+      if (!isMounted) return
+
       setSession(s)
       setUser(s?.user ?? null)
-      if (s?.user) fetchProfile(s.user.id)
-      else {
+
+      if (s?.user) {
+        await ensureProfileForUser(s.user)
+        await fetchProfile(s.user.id)
+      } else {
         setProfile(null)
         setTeam(null)
       }
+
+      if (isMounted) setLoading(false)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -84,16 +152,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     displayName: string,
     teamId: number,
   ) {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: getEmailRedirectUrl(),
+        data: {
+          display_name: displayName,
+          team_id: teamId,
+        },
+      },
+    })
+
     if (error) return error.message
-    if (data.user) {
-      await supabase.from("users").upsert({
-        id: data.user.id,
-        email,
-        display_name: displayName,
-        team_id: teamId,
-      })
+
+    if (data.user && data.session) {
+      await ensureProfileForUser(data.user)
+      await fetchProfile(data.user.id)
     }
+
     return null
   }
 

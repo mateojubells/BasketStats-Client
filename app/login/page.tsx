@@ -54,7 +54,7 @@ export default function LoginPage() {
             Cuenta creada
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Revisa tu email para confirmar tu cuenta. Luego inicia sesión.
+            Revisa tu email para confirmar tu cuenta. Tras confirmar, entrarás automáticamente al dashboard.
           </p>
           <button
             onClick={() => {
