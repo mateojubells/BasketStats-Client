@@ -11,91 +11,143 @@ export interface HoopsSQLResponse {
   tactical_context: string
 }
 
+export interface EvaluationResponse {
+  satisfactory: boolean
+  new_sql: string | null
+  response: string | null
+}
+
+export async function saveChatLog(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  userId: string,
+  question: string,
+  thought: string,
+  finalSql: string | null,
+  response: string,
+  numIterations: number,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from("hoops_ai_logs").insert([
+      {
+        user_id: userId,
+        question,
+        thought,
+        final_sql: finalSql,
+        response,
+        num_iterations: numIterations,
+        created_at: new Date().toISOString(),
+      },
+    ])
+
+    if (error) {
+      console.error("[HoopsAI][LOG_ERROR] Error guardando log:", error)
+    }
+  } catch (err) {
+    console.error("[HoopsAI][LOG_ERROR] Excepción al guardar log:", err)
+  }
+}
+
 function buildSystemPrompt(userTeamId: number, opponentTeamId: number | null): string {
   const allowedTeams = opponentTeamId ? `${userTeamId}, ${opponentTeamId}` : `${userTeamId}`
-  const rivalScope = opponentTeamId
-    ? `Rival habilitado (siguiente partido): ${opponentTeamId}.`
-    : "No hay rival próximo habilitado."
-  const rivalRule = opponentTeamId
-    ? `- Equipo rival habilitado (${opponentTeamId}): se permite toda su información (equipo, jugadores, tiros, play-by-play y estadísticas), solo por ser el siguiente rival`
-    : "- Sin rival próximo: no se permite consultar información de otros equipos/jugadores"
 
-  return `Eres HoopsIQ Analyst. Traduce preguntas en SQL PostgreSQL para Supabase.
+  return `Eres HoopsIQ Analyst, un asistente experto en bases de datos PostgreSQL, analítica avanzada y táctica de baloncesto.
+Tu objetivo es traducir preguntas complejas de entrenadores en consultas SQL exactas y altamente optimizadas.
 
-PRIVACIDAD ESTRICTA:
-- Equipo de la cuenta (user_team_id): ${userTeamId}.
-- ${rivalScope}
-- Nunca uses IDs fijos (ej. 86/77). Usa solo los IDs de esta llamada.
-- Rechaza o limita cualquier consulta fuera de este alcance.
+### 1. REGLAS DE SEGURIDAD Y PRIVACIDAD (ESTRICTO)
+- ID de tu equipo (user_team_id): ${userTeamId}
+- ID del próximo rival: ${opponentTeamId ?? "NINGUNO"}
+- ALCANCE PERMITIDO: Solo puedes consultar datos vinculados a los IDs: (${allowedTeams}).
+- REGLA DE RECHAZO: Si se solicita información explícita de un equipo o jugador fuera del alcance permitido, DEBES devolver "sql": null.
+- EXCEPCIÓN: Consultas genéricas sobre "promedios de mi equipo", "mi historial" o "nuestras estadísticas" SIEMPRE son válidas usando el user_team_id.
+- PERMISOS: Solo operaciones SELECT.
 
-SOLO SELECT. Prohibido: INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE.
+### 2. ESQUEMA RELACIONAL Y DICCIONARIO DE INTENCIONES
+Usa esta guía para decidir QUÉ tabla consultar según lo que pregunte el usuario:
 
-ESQUEMA EXACTO DE LA BASE DE DATOS:
+- teams (id INT PK, name TEXT, logo_url TEXT) -> Usar para obtener el nombre del equipo.
+- players (id INT PK, name TEXT, current_team_id INT FK, jersey_number INT) -> Usar para obtener nombres y dorsales.
+- games (id INT PK, date TIMESTAMP, home_team_id INT FK, away_team_id INT FK, home_score INT, away_score INT, status TEXT, jornada INT) 
+  -> Filtro obligatorio para partidos jugados: \`status='PROCESSED'\`.
 
-TABLA: games
-  Columnas: id (bigint, PK) | feb_game_id (text, unique) | league_id (bigint) | date (timestamp) | home_team_id (bigint) | away_team_id (bigint) | home_score (integer) | away_score (integer) | status (text) | url (text) | updated_at (timestamp) | jornada (integer)
+ESTADÍSTICAS AGREGADAS (El resumen del partido):
+- stats_player_games (id INT PK, game_id INT FK, player_id INT FK, team_id INT FK, minutes TEXT, points INT, t2_made INT, t2_att INT, t3_made INT, t3_att INT, ft_made INT, ft_att INT, reb_off INT, reb_def INT, reb_tot INT, assists INT, steals INT, turnovers INT, blocks_for INT, blocks_against INT, fouls_comm INT, fouls_rec INT, valoracion INT, plus_minus INT, starter BOOLEAN)
+  -> CUÁNDO USAR: Para promedios de temporada, top anotadores, reboteadores, porcentajes generales de un jugador, comparativas generales entre jugadores.
+- stats_team_games (id INT PK, game_id INT FK, team_id INT FK, t2_pct FLOAT, t3_pct FLOAT, ft_pct FLOAT, fg_made INT, fg_att INT, fg_pct FLOAT, t2_made INT, t2_att INT, t3_made INT, t3_att INT, ft_made INT, ft_att INT, reb_off INT, reb_def INT, reb_tot INT, assists INT, steals INT, turnovers INT, blocks_for INT, blocks_against INT, fouls_comm INT, fouls_rec INT)
+  -> CUÁNDO USAR: Para promedios globales del equipo, rendimiento ofensivo general, comparación de equipo vs rivales.
+  -> 🚨 IMPORTANTE: Esta tabla NO tiene columna 'points'. Para calcular los puntos, usa la fórmula: ((t2_made * 2) + (t3_made * 3) + ft_made).
 
-TABLA: leagues
-  Columnas: id (bigint, PK) | name (text) | base_url (text) | season_year (text) | group_name (text) | feb_group_id (text)
+DATOS GRANULARES Y MICRO-ACCIONES:
+- play_by_play (id INT PK, game_id INT FK, quarter INT, minute TEXT, team_id INT FK, player_id INT FK, action_type TEXT, home_score_partial INT, away_score_partial INT, action_value INT, stat_count INT, free_throws_awarded INT)
+  -> CUÁNDO USAR OBLIGATORIAMENTE: 
+     1. Preguntas sobre momentos específicos: "en el último cuarto", "en los últimos 5 minutos", "en el clutch", o estadísticas parciales antes de un momento dado.
+     2. Acciones concretas: "cuántas faltas hizo X en el 3er cuarto", "rachas de anotación", "quién anota primero".
+     3. Filtrar por \`quarter\` (1, 2, 3, 4) o parsear el texto de \`minute\`.
+- shots (id INT PK, game_id INT FK, player_id INT FK, team_id INT FK, x_coord FLOAT, y_coord FLOAT, made BOOLEAN, quarter INT, zone TEXT, pbp_id INT FK)
+  -> CUÁNDO USAR OBLIGATORIAMENTE:
+     1. Preguntas sobre ubicaciones: "tiros desde la pintura", "triples desde la esquina", "zonas calientes".
+     2. Efectividad por zona: "porcentaje de acierto en el lado derecho".
 
-TABLA: teams
-  Columnas: id (bigint, PK) | feb_id (text, unique) | name (text) | logo_url (text) | created_at (timestamp)
+### 3. RECETAS DE JOINS (CÓMO CRUZAR TABLAS)
+- Rendimiento de Jugador: \`stats_player_games spg JOIN players p ON spg.player_id = p.id JOIN games g ON spg.game_id = g.id\`
+- Análisis de Tiros Espaciales: \`shots s JOIN players p ON s.player_id = p.id JOIN games g ON s.game_id = g.id\`
+- Detalles de Cuartos/Minutos: \`play_by_play pbp JOIN players p ON pbp.player_id = p.id JOIN games g ON pbp.game_id = g.id\`
 
-TABLA: players
-  Columnas: id (bigint, unique) | name (text) | current_team_id (bigint) | feb_player_id (text, PK) | jersey_number (integer)
+### 4. FÓRMULAS AVANZADAS Y PATRONES DE CONSULTA
+Siempre que agrupes (SUM, AVG), usa NULLIF para evitar división por cero y ::FLOAT para evitar división de enteros.
 
-TABLA: stats_player_games
-  Columnas: id (bigint, PK) | game_id (bigint) | player_id (bigint) | team_id (bigint) | minutes (text) | points (integer) | t2_made (integer) | t2_att (integer) | t3_made (integer) | t3_att (integer) | ft_made (integer) | ft_att (integer) | reb_off (integer) | reb_def (integer) | reb_tot (integer) | assists (integer) | steals (integer) | turnovers (integer) | blocks_for (integer) | blocks_against (integer) | fouls_comm (integer) | fouls_rec (integer) | valoracion (integer) | plus_minus (integer) | starter (boolean)
+[Puntos Parciales y Evitar Productos Cartesianos] 🚨 MUY IMPORTANTE
+- NUNCA hagas SUM() de 'stats_player_games.points' si estás haciendo un JOIN con 'play_by_play' o 'shots'. Hacer esto multiplica los puntos por cada jugada y da resultados imposibles (ej. 260 puntos).
+- Si te piden estadísticas parciales (ej: "puntos en el 3er cuarto" o "puntos antes del último cuarto"), NO puedes usar 'stats_player_games' porque tiene los totales del partido completo. DEBES sumar los puntos directamente desde las jugadas: SUM(pbp.action_value) FROM play_by_play pbp filtrando por quarter (ej. quarter < 4).
 
-TABLA: stats_team_games
-  Columnas: id (bigint, PK) | game_id (bigint) | team_id (bigint) | t2_pct (double) | t3_pct (double) | ft_pct (double) | fg_made (integer) | fg_att (integer) | fg_pct (double) | t2_made (integer) | t2_att (integer) | t3_made (integer) | t3_att (integer) | ft_made (integer) | ft_att (integer) | reb_off (integer) | reb_def (integer) | reb_tot (integer) | assists (integer) | steals (integer) | turnovers (integer) | blocks_for (integer) | blocks_against (integer) | fouls_comm (integer) | fouls_rec (integer)
+[Fórmulas de Eficiencia y Puntos]
+- eFG% (Tiro Efectivo): \`(SUM(fg_made) + 0.5 * SUM(t3_made))::FLOAT / NULLIF(SUM(fg_att), 0)\`
+- TS% (True Shooting): \`SUM(points)::FLOAT / NULLIF(2.0 * (SUM(t2_att + t3_att) + 0.44 * SUM(ft_att)), 0)\`
+- Porcentajes estándar: \`ROUND((SUM(made)::NUMERIC / NULLIF(SUM(att), 0)) * 100, 1)\`
+- Puntos Totales stats_team_games: \`SUM((t2_made * 2) + (t3_made * 3) + ft_made)\`
+- Puntos Promedio stats_team_games: \`AVG((t2_made * 2) + (t3_made * 3) + ft_made)\`
 
-TABLA: play_by_play
-  Columnas: id (bigint, PK) | game_id (bigint) | quarter (integer) | minute (text) | team_id (bigint) | player_id (bigint) | action_type (text) | home_score_partial (integer) | away_score_partial (integer) | action_value (integer) | stat_count (integer) | free_throws_awarded (integer)
+[Gestión de Tipos y Formatos Específicos]
+- Minutos de Juego ('minutes' en stats_player_games): Es de tipo TEXT y tiene el formato 'MM:SS' (Ej. '25:00'). Si el usuario pregunta "quién jugó 25 minutos", NO puedes usar \`minutes = 25\`. Usa patrones LIKE (Ej: \`minutes LIKE '25:%'\`) o comparaciones de string (\`minutes >= '25:00'\`).
+- Booleanos ('made' en shots, 'starter' en stats_player_games): Son BOOLEAN. Usa \`made = TRUE\` o \`starter IS TRUE\`. No uses = 1.
+- Nombres ('name'): Usa \`ILIKE '%Texto%'\` para hacer coincidencia parcial y evitar problemas de mayúsculas o apellidos.
 
-TABLA: shots
-  Columnas: id (bigint, PK) | game_id (bigint) | player_id (bigint) | team_id (bigint) | x_coord (double) | y_coord (double) | made (boolean) | quarter (integer) | zone (text) | pbp_id (bigint)
+[Filtros de Partidos Específicos]
+- "Último partido": NUNCA uses solo status='PROCESSED'. Debes usar OBLIGATORIAMENTE una CTE para obtener el id del último partido jugado. 
+  Ejemplo: WITH last_game AS (SELECT id FROM games WHERE (home_team_id = ${userTeamId} OR away_team_id = ${userTeamId}) AND status = 'PROCESSED' ORDER BY date DESC LIMIT 1)
 
-TABLA: users
-  Columnas: id (uuid, PK) | email (text, unique) | display_name (text) | created_at (timestamp) | team_id (bigint)
+[Gestión del Tiempo Global (play_by_play)]
+- Si el usuario pregunta por un minuto global (Ej: "minuto 25"), calcula a qué cuarto pertenece asumiendo cuartos de 10 minutos (Ej: Minuto 25 = 3er cuarto). NO respondas que el minuto es inválido. Ve a play_by_play y filtra por \`quarter = 3\`. La columna 'minute' en play_by_play es TEXT, trátala con LIKE si buscas el minuto parcial.
+- 
+[Identidad de Jugadores y Play-by-Play]
+- "Nuestro jugador" o "Mis jugadores": SIEMPRE añade el filtro "p.current_team_id = ${userTeamId}" al hacer JOIN con 'players'. Esto evita cruces erróneos con jugadores rivales que recibieron faltas.
+- Para buscar faltas cometidas: action_type ILIKE '%foul%'.
 
-JOINS COMUNES:
-- Individual: stats_player_games JOIN players ON stats_player_games.player_id = players.id JOIN games ON stats_player_games.game_id = games.id JOIN teams ON stats_player_games.team_id = teams.id
-- Equipo: stats_team_games JOIN teams ON stats_team_games.team_id = teams.id JOIN games ON stats_team_games.game_id = games.id
-- Play-by-play: play_by_play JOIN players ON play_by_play.player_id = players.id JOIN games ON play_by_play.game_id = games.id JOIN teams ON play_by_play.team_id = teams.id
-- Tiros: shots JOIN players ON shots.player_id = players.id JOIN games ON shots.game_id = games.id JOIN teams ON shots.team_id = teams.id
+[Evaluación de "Mejores" o "Líderes"]
+- Cuando te pregunten por "el más anotador", "el más valorado" o "el mejor", NUNCA uses la función MAX() a menos que pregunten por "el récord en un partido".
+- SIEMPRE usa promedios: AVG(points), AVG(valoracion), agrupando por jugador (GROUP BY) y ordenando descendente (ORDER BY AVG(...) DESC).
 
-FÓRMULAS:
-- eFG%: (SUM(fg_made) + 0.5*SUM(t3_made)) / NULLIF(SUM(fg_att), 0)
-- TS%: SUM(points) / NULLIF(2.0*(SUM(fg_att) + 0.44*SUM(ft_att)), 0)
-- Plus/Minus On: stats_player_games.plus_minus
-- Plus/Minus Off: margen - plus_minus
+[Jugadores en pista]
+- La tabla play_by_play no guarda alineaciones pasivas. Si preguntan "qué jugadores estaban en pista", busca qué jugadores registraron alguna acción o sustitución (action_type ILIKE '%sub%') cerca de ese momento.
 
-REGLAS SQL:
-- Alcance base permitido: IDs de equipo en (${allowedTeams})
-- Equipo de la cuenta (${userTeamId}): se permite toda su información
-- Permitido explícitamente para equipo de la cuenta: promedios, acumulados, rankings, tendencias y splits (home/away, por periodo, por jugador, por partido)
-- Partidos disputados: permite consultas de TODOS los partidos ya disputados por el equipo de la cuenta
-  * Usa games.status = 'PROCESSED' cuando la pregunta sea sobre partidos ya disputados
-  * Filtra (games.home_team_id = ${userTeamId} OR games.away_team_id = ${userTeamId})
-- ${rivalRule}
-- Si la pregunta es tipo "promedios de mi equipo" o "estadísticas acumuladas de mi equipo", SIEMPRE genera SQL válido (no rechazar)
-- Para el rival habilitado (${opponentTeamId ?? "ninguno"}) también se permiten promedios/acumulados, porque está dentro del alcance permitido
-- Si se consulta team_id/current_team_id/home_team_id/away_team_id, debe estar en (${allowedTeams})
-- Prohibido consultar estadísticas acumuladas o individuales de equipos/jugadores fuera de (${allowedTeams})
-- NULLIF para divisiones por cero
-- ROUND(..., 1) para porcentajes
-- JOIN nombres, no solo IDs
-- LIMIT resultados largos
+### 5. GUÍA DE REDACCIÓN SQL
+- Usa CTEs (cláusulas WITH) SIEMPRE que haya múltiples agregaciones o comparaciones complejas.
+- NUNCA devuelvas solo IDs. Haz JOIN para devolver 'teams.name' y 'players.name'.
+- Si calculas datos del próximo rival, el SELECT debe incluir el 'teams.name' del rival explícitamente para poder nombrarlo.
+- Formateo de Fechas: Si seleccionas fechas de 'games.date', usa funciones de formato legibles como TO_CHAR(date, 'YYYY-MM-DD').
+- Aplica SIEMPRE el filtro de seguridad base en la tabla principal: \`team_id IN (${allowedTeams})\`.
 
-RESPONDE JSON (sin markdown):
-{ "sql": "...", "thought": "...", "tactical_context": "..." }
-
-Sin SQL: { "sql": null, "thought": "...", "tactical_context": "..." }`
+### 6. FORMATO DE RESPUESTA REQUERIDO (JSON STRICT)
+Debes devolver el resultado usando ESTRICTAMENTE la siguiente estructura JSON (sin backticks de markdown alrededor):
+{
+  "thought": "1. Identifico intención. 2. Reviso seguridad y tipos de datos (TEXT vs INT). 3. Diseño JOIN y fórmulas. Evito productos cartesianos. 4. Construyo CTEs.",
+  "sql": "Tu código SQL en crudo aquí, o null si está fuera del alcance.",
+  "tactical_context": "Breve resumen para el entrenador indicando qué responde esta consulta."
+}`
 }
 
 function getOpenAIClient() {
-  const apiKey = process.env.GITHUB_TOKEN?.replace(/^['\"]|['\"]$/g, "").trim()
+  const apiKey = process.env.GITHUB_TOKEN?.replace(/^['"]|['"]$/g, "").trim()
 
   if (!apiKey) {
     throw new Error(
@@ -134,7 +186,11 @@ export async function generateSQL(
   userTeamId: number,
   opponentTeamId: number | null,
 ): Promise<HoopsSQLResponse> {
-  return generateHoopsQuery(question, userTeamId, opponentTeamId)
+  const result = await generateHoopsQuery(question, userTeamId, opponentTeamId)
+  if (result.sql) {
+    console.log("[HoopsAI][SQL_GENERATED]", result.sql)
+  }
+  return result
 }
 
 export async function generateHoopsQuery(
@@ -142,6 +198,7 @@ export async function generateHoopsQuery(
   userTeamId: number,
   opponentTeamId: number | null,
 ): Promise<HoopsSQLResponse> {
+  const t0 = Date.now()
   const client = getOpenAIClient()
   const systemPrompt = buildSystemPrompt(userTeamId, opponentTeamId)
 
@@ -199,73 +256,97 @@ export async function generateHoopsQuery(
 
     const retryContent = retryCompletion.choices[0]?.message?.content
     if (retryContent) {
+      console.log(`[HoopsAI][TIME] generateHoopsQuery (retry) tardó ${Date.now() - t0}ms`)
       return safeJsonParse(retryContent)
     }
   }
 
+  console.log(`[HoopsAI][TIME] generateHoopsQuery tardó ${Date.now() - t0}ms`)
   return parsed
 }
 
-export async function humanizeResults(
+export async function evaluateAndRespond(
   question: string,
   sqlQuery: string,
+  error: string | null,
   rawData: Record<string, unknown>[],
   thought: string,
   tacticalContext: string,
-): Promise<string> {
+  userTeamId: number,
+  opponentTeamId: number | null,
+): Promise<EvaluationResponse> {
+  const t0 = Date.now()
   const client = getOpenAIClient()
+  const systemPrompt = buildSystemPrompt(userTeamId, opponentTeamId)
 
-  const prompt = `Eres HoopsIQ Analyst, un analista táctico de baloncesto.
+  const prompt = `Eres un evaluador y orquestador de IA para análisis de baloncesto.
+El usuario preguntó: "${question}"
+Se intentó ejecutar esta consulta SQL: ${sqlQuery}
 
-El entrenador preguntó: "${question}"
+Resultado de la base de datos:
+${error ? `ERROR SQL RECIBIDO: ${error}` : `DATOS DEVUELTOS: ${JSON.stringify(rawData, null, 2)}`}
 
-Se ejecutó esta consulta SQL: ${sqlQuery}
+INSTRUCCIONES ESTRICTAS DE EVALUACIÓN:
+1. Si recibiste un "ERROR SQL RECIBIDO" (ej. "column does not exist", "syntax error"):
+   - ESTÁ PROHIBIDO REPETIR LA MISMA CONSULTA SQL.
+   - Lee el error. Si una columna no existe (ej. stats_team_games.points), busca la alternativa lógica en el esquema (ej. usar (t2_made*2)+(t3_made*3)+ft_made).
+   - Genera una nueva consulta en el campo 'new_sql' que resuelva el fallo explícitamente. 'satisfactory' debe ser false.
 
-Razonamiento previo: ${thought}
-Contexto táctico: ${tacticalContext}
+2. Si los datos están vacíos (DATOS DEVUELTOS: []):
+   - Piensa si un filtro (ej. fecha, nombre exacto, minuto) fue demasiado restrictivo.
+   - Si puedes mejorarlo (ej. usando ILIKE o cambiando el método de JOIN), genera un 'new_sql'. 'satisfactory' debe ser false.
 
-Los datos devueltos fueron:
-${JSON.stringify(rawData, null, 2)}
+3. Si los datos SÍ responden a la pregunta ('satisfactory': true):
+   - Genera la respuesta en lenguaje natural en 'response'.
+   - REGLAS DE LA RESPUESTA: NO uses tablas Markdown crudas. Integra los datos en el texto fluidamente.
+   - NOMBRA SIEMPRE a los equipos explícitamente (Ej. Di "El Real Madrid tiene un acierto de..." en lugar de "Nuestro rival tiene..."). Usa los nombres devueltos en la query.
+   - Sé conciso y usa emojis (🏀, 📊, 🎯).
 
-INSTRUCCIONES:
-1. Interpreta los datos en lenguaje natural para un entrenador.
-2. Destaca hallazgos tácticos relevantes.
-3. Si hay datos tabulares (más de 2 filas con columnas numéricas), incluye una sección con los datos clave.
-4. Sé conciso pero informativo. Usa emoji relevantes (🏀, 📊, 🎯, ⚡, 🔥, 🛡️).
-5. Si los datos están vacíos, indica que no hay datos suficientes.
-6. Responde en español.
-
-FORMATO DE RESPUESTA:
-- Respuesta directa en texto plano con formato Markdown.
-- Si incluyes tabla, usa formato Markdown: | Col1 | Col2 | ... |
-- NO respondas en JSON, responde directamente con el análisis.`
+FORMATO DE RESPUESTA (JSON estricto):
+{
+  "satisfactory": boolean,
+  "new_sql": "NUEVA CONSULTA CORREGIDA AQUI (diferente a la anterior)" | null,
+  "response": "RESPUESTA EN LENGUAJE NATURAL AQUI" | null
+}`
 
   const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",
-    temperature: 0.4,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
     messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: prompt },
     ],
   })
 
-  return completion.choices[0]?.message?.content?.trim() || "No fue posible generar el análisis táctico."
+  const content = completion.choices[0]?.message?.content
+  if (!content) {
+    console.log(`[HoopsAI][TIME] evaluateAndRespond tardó ${Date.now() - t0}ms (sin contenido)`)
+    return { satisfactory: true, new_sql: null, response: "Error al evaluar la respuesta." }
+  }
+
+  try {
+    console.log(`[HoopsAI][TIME] evaluateAndRespond tardó ${Date.now() - t0}ms`)
+    return JSON.parse(content) as EvaluationResponse
+  } catch {
+    console.log(`[HoopsAI][TIME] evaluateAndRespond tardó ${Date.now() - t0}ms (parse error)`)
+    return { satisfactory: true, new_sql: null, response: "Error al procesar la evaluación." }
+  }
 }
 
 export function validateSQL(sql: string): { valid: boolean; error?: string } {
-  const trimmed = sql.trim().toUpperCase()
+  const cleanSql = sql.replace(/^```(sql)?/i, '').replace(/```$/i, '').trim()
+  const upperSql = cleanSql.toUpperCase()
 
-  if (!trimmed.startsWith("SELECT")) {
-    return { valid: false, error: "Solo se permiten consultas SELECT." }
+  if (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH")) {
+    return { valid: false, error: "Solo se permiten consultas SELECT o WITH." }
   }
 
   const forbidden = /\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|EXECUTE)\b/i
-  if (forbidden.test(sql)) {
+  if (forbidden.test(upperSql)) {
     return {
       valid: false,
-      error: "La consulta contiene operaciones prohibidas. Solo SELECT es permitido.",
+      error: "La consulta contiene operaciones prohibidas. Solo SELECT o WITH es permitido.",
     }
   }
 
