@@ -1,13 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { getAllTeams } from "@/lib/api"
 import type { Team } from "@/lib/types"
 import { LayoutDashboard } from "lucide-react"
 
 export default function LoginPage() {
-  const { signIn, signUp } = useAuth()
+  const router = useRouter()
+  const { signIn, signUp, session, loading } = useAuth()
   const [mode, setMode] = useState<"login" | "register">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -15,8 +17,15 @@ export default function LoginPage() {
   const [teamId, setTeamId] = useState<number>(0)
   const [teams, setTeams] = useState<Team[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
+
+  // Si hay sesión activa, redirige al dashboard
+  useEffect(() => {
+    if (!loading && session) {
+      router.replace("/")
+    }
+  }, [loading, session, router])
 
   useEffect(() => {
     getAllTeams().then(setTeams)
@@ -25,22 +34,31 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setLoading(true)
+    setIsSubmitting(true)
 
     if (mode === "login") {
       const err = await signIn(email, password)
-      if (err) setError(err)
+      if (err) {
+        setError(err)
+        setIsSubmitting(false)
+      } else {
+        // Login exitoso, redirige al dashboard
+        router.push("/")
+      }
     } else {
       if (!teamId) {
         setError("Selecciona un equipo")
-        setLoading(false)
+        setIsSubmitting(false)
         return
       }
       const err = await signUp(email, password, displayName, teamId)
-      if (err) setError(err)
-      else setSuccess(true)
+      if (err) {
+        setError(err)
+        setIsSubmitting(false)
+      } else {
+        setSuccess(true)
+      }
     }
-    setLoading(false)
   }
 
   if (success) {
@@ -166,10 +184,10 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting || loading}
             className="mt-2 h-10 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {loading
+            {isSubmitting
               ? "Cargando…"
               : mode === "login"
                 ? "Entrar"

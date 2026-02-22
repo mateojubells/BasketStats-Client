@@ -13,7 +13,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && !session) {
+    // Solo redirige si terminó de cargar Y no hay sesión
+    if (!loading && session === null) {
       router.replace("/login")
     }
   }, [loading, session, router])
