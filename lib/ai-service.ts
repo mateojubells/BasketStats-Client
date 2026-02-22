@@ -76,7 +76,7 @@ REGLAS SQL:
 - Equipo de la cuenta (${userTeamId}): se permite toda su información
 - Permitido explícitamente para equipo de la cuenta: promedios, acumulados, rankings, tendencias y splits (home/away, por periodo, por jugador, por partido)
 - Partidos disputados: permite consultas de TODOS los partidos ya disputados por el equipo de la cuenta
-  * Usa games.status = 'PLAYED' cuando la pregunta sea sobre partidos ya disputados
+  * Usa games.status = 'PROCESSED' cuando la pregunta sea sobre partidos ya disputados
   * Filtra (games.home_team_id = ${userTeamId} OR games.away_team_id = ${userTeamId})
 - ${rivalRule}
 - Si la pregunta es tipo "promedios de mi equipo" o "estadísticas acumuladas de mi equipo", SIEMPRE genera SQL válido (no rechazar)
