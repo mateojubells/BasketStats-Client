@@ -1,81 +1,81 @@
 # 🏀 BasketStats-Client
 
-Una aplicación web moderna para visualización, análisis y scouting de estadísticas de baloncesto de la FEB (Federación Española de Baloncesto). Construida con Next.js, TypeScript y Tailwind CSS.
+A modern web application for visualization, analysis, and scouting of basketball statistics from the FEB (Spanish Basketball Federation). Built with Next.js, TypeScript, and Tailwind CSS.
 
-## 📋 Tabla de Contenidos
+## 📋 Table of Contents
 
-- [Introducción](#introducción)
+- [Introduction](#introduction)
 - [Quick Start](#quick-start)
-- [Variables de Entorno](#variables-de-entorno)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Scripts Disponibles](#scripts-disponibles)
-- [Arquitectura](#arquitectura)
-- [Características](#características)
-- [Integración API](#integración-api)
+- [Environment Variables](#environment-variables)
+- [Project Structure](#project-structure)
+- [Available Scripts](#available-scripts)
+- [Architecture](#architecture)
+- [Features](#features)
+- [API Integration](#api-integration)
 - [Deployment](#deployment)
-- [Contribuir](#contribuir)
-- [Repositorio Relacionado](#repositorio-relacionado)
+- [Contributing](#contributing)
+- [Related Repository](#related-repository)
 - [Troubleshooting](#troubleshooting)
-- [Licencia](#licencia)
+- [License](#license)
 
 ---
 
-## 📖 Introducción
+## 📖 Introduction
 
-**BasketStats-Client** es una plataforma de análisis de baloncesto diseñada para:
+**BasketStats-Client** is a basketball analytics platform designed for:
 
-- **Scouts**: Análisis defensivo, comparativas de sinergias, identificación de amenazas clave
-- **Analistas**: Tendencias de jugadores, análisis de clutch time, cuatro factores del baloncesto
-- **Entrenadores**: Visualización de partidos completos, gráficos de tiro, calendarios de equipo
-- **Aficionados**: Dashboard con KPIs, estadísticas en tiempo real, pronósticos de victoria
+- **Scouts**: Defensive analysis, synergy comparisons, identification of key threats
+- **Analysts**: Player trends, clutch-time analysis, the four factors of basketball
+- **Coaches**: Full-game visualization, shooting charts, team schedules
+- **Fans**: KPI dashboard, real-time statistics, win predictions
 
-La aplicación se conecta exclusivamente con **Supabase** para lectura de datos, proporcionando una separación clara entre frontend y la gestión de datos (realizada por [BasketStats-Admin](https://github.com/tu-usuario/BasketStats-Admin)).
+The application connects exclusively to **Supabase** for data reading, providing a clear separation between the frontend and data management (handled by [BasketStats-Admin](https://github.com/...)).
 
-### 🎯 Casos de Uso
+### 🎯 Use Cases
 
-- Análisis pre-partido: Scouting y matchups defensivos
-- Análisis en vivo: Play-by-play, boxes score y gráficos de tiro
-- Seguimiento de jugadores: Tendencias, impacto, cuadros de control
-- Consultas IA: ChatBot HoopsAI para preguntas rápidas sobre estadísticas
+- Pre-game analysis: Scouting and defensive matchups
+- Live analysis: Play-by-play, box scores, and shooting charts
+- Player tracking: Trends, impact, dashboards
+- AI queries: HoopsAI ChatBot for quick stats questions
 
 ---
 
 ## 🚀 Quick Start
 
-### Requisitos Previos
+### Prerequisites
 
-- **Node.js**: v18.17 o superior
-- **pnpm**: v8 o superior (recomendado) o npm/yarn
-- Acceso a credenciales de **Supabase** (proyecto FEB)
+- **Node.js**: v18.17 or higher
+- **pnpm**: v8 or higher (recommended) or npm/yarn
+- Access to **Supabase** credentials (FEB project)
 
-### 1. Clonar el repositorio
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/tu-usuario/BasketStats-Client.git
+git clone https://github.com/your-username/BasketStats-Client.git
 cd BasketStats-Client
 ```
 
-### 2. Instalar dependencias
+### 2. Install dependencies
 
 ```bash
 pnpm install
 ```
 
-O con npm:
+Or with npm:
 
 ```bash
 npm install
 ```
 
-### 3. Configurar variables de entorno
+### 3. Configure environment variables
 
-Copia el archivo `.env.example` y completa con tus credenciales:
+Copy the `.env.example` file and fill in your credentials:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Edita `.env.local` con tus valores (ver [Variables de Entorno](#variables-de-entorno)):
+Edit `.env.local` with your values (see [Environment Variables](#environment-variables)):
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -83,219 +83,219 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...
 NEXT_PUBLIC_OPENAI_API_KEY=sk-proj-...
 ```
 
-### 4. Ejecutar servidor de desarrollo
+### 4. Run the development server
 
 ```bash
 pnpm dev
 ```
 
-Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🔐 Variables de Entorno
+## 🔐 Environment Variables
 
-Crea un archivo `.env.local` en la raíz del proyecto:
+Create a `.env.local` file in the project root:
 
 ```env
 # Supabase Configuration
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# OpenAI API (para HoopsAI Chatbot)
+# OpenAI API (for HoopsAI Chatbot)
 NEXT_PUBLIC_OPENAI_API_KEY=sk-proj-...
 
-# Analytics (opcional)
+# Analytics (optional)
 NEXT_PUBLIC_ANALYTICS_ID=UA-...
 ```
 
-### Descripción de Variables
+### Variable Description
 
-| Variable | Descripción | Requerida |
-|----------|-------------|-----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase | ✅ |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clave anónima de Supabase (cliente público) | ✅ |
-| `NEXT_PUBLIC_OPENAI_API_KEY` | Clave API de OpenAI para chatbot | ✅ |
-| `NEXT_PUBLIC_ANALYTICS_ID` | ID de Google Analytics | ❌ |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | ✅ |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key (public client) | ✅ |
+| `NEXT_PUBLIC_OPENAI_API_KEY` | OpenAI API key for chatbot | ✅ |
+| `NEXT_PUBLIC_ANALYTICS_ID` | Google Analytics ID | ❌ |
 
-⚠️ **Nota**: Las variables con prefijo `NEXT_PUBLIC_` son expuestas en el navegador. **Nunca incluyas secretos sensibles** (tokens privados, claves administrativas).
+⚠️ **Note**: Variables prefixed with `NEXT_PUBLIC_` are exposed in the browser. **Never include sensitive secrets** (private tokens, admin keys).
 
 ---
 
-## 📁 Estructura del Proyecto
+## 📁 Project Structure
 
-```
+```text
 BasketStats-Client/
-├── app/                          # App Router de Next.js
-│   ├── layout.tsx               # Layout raíz
-│   ├── page.tsx                 # Página principal (dashboard)
-│   ├── login/                   # Autenticación
-│   ├── player/                  # Análisis de jugadores
-│   ├── teams/                   # Gestión de equipos
-│   ├── game-center/             # Visualización de partidos
-│   ├── scouting/                # Herramientas de scouting
-│   ├── calendar/                # Calendario de partidos
-│   ├── chat/                    # Chat con HoopsAI
-│   └── api/chat/                # API interna para chatbot
+├── app/                          # Next.js App Router
+│   ├── layout.tsx               # Root layout
+│   ├── page.tsx                 # Main page (dashboard)
+│   ├── login/                   # Authentication
+│   ├── player/                  # Player analysis
+│   ├── teams/                   # Team management
+│   ├── game-center/             # Game visualization
+│   ├── scouting/                # Scouting tools
+│   ├── calendar/                # Match calendar
+│   ├── chat/                    # HoopsAI chat
+│   └── api/chat/                # Internal chatbot API
 │
-├── components/                   # Componentes React reutilizables
-│   ├── ui/                      # Componentes base (shadcn/ui)
+├── components/                   # Reusable React components
+│   ├── ui/                      # Base components (shadcn/ui)
 │   │   ├── button.tsx
 │   │   ├── card.tsx
 │   │   ├── chart.tsx
-│   │   └── [otros...]
-│   ├── dashboard/               # Componentes del dashboard
-│   ├── game-center/             # Componentes de visualización de partidos
-│   ├── player/                  # Componentes de análisis de jugadores
-│   ├── scouting/                # Componentes de scouting
-│   ├── teams/                   # Componentes de equipos
+│   │   └── [others...]
+│   ├── dashboard/               # Dashboard components
+│   ├── game-center/             # Game visualization components
+│   ├── player/                  # Player analysis components
+│   ├── scouting/                # Scouting components
+│   ├── teams/                   # Team components
 │   ├── chatbot/                 # HoopsAI chatbot
-│   └── [componentes principales]
+│   └── [main components]
 │
 ├── hooks/                       # Custom React hooks
 │   ├── use-mobile.tsx
 │   └── use-toast.ts
 │
-├── lib/                         # Utilidades y configuración
-│   ├── api.ts                   # Cliente API (queries a Supabase)
-│   ├── supabase.ts              # Configuración de Supabase
-│   ├── auth-context.tsx         # Contexto de autenticación
-│   ├── types.ts                 # Tipos TypeScript compartidos
-│   ├── utils.ts                 # Utilidades generales
-│   ├── ai-service.ts            # Integración con OpenAI
-│   ├── data.ts                  # Datos mock/transformación
-│   └── gemini.ts                # Servicios de Gemini (si aplica)
+├── lib/                         # Utilities and configuration
+│   ├── api.ts                   # API client (Supabase queries)
+│   ├── supabase.ts              # Supabase configuration
+│   ├── auth-context.tsx         # Authentication context
+│   ├── types.ts                 # Shared TypeScript types
+│   ├── utils.ts                 # General utilities
+│   ├── ai-service.ts            # OpenAI integration
+│   ├── data.ts                  # Mock/transformation data
+│   └── gemini.ts                # Gemini services (if applicable)
 │
-├── tailwind.config.ts           # Configuración de Tailwind CSS v4
-├── next.config.mjs              # Configuración de Next.js
-├── tsconfig.json                # Configuración de TypeScript
-├── package.json                 # Dependencias
-└── README.md                    # Este archivo
+├── tailwind.config.ts           # Tailwind CSS v4 configuration
+├── next.config.mjs              # Next.js configuration
+├── tsconfig.json                # TypeScript configuration
+├── package.json                 # Dependencies
+└── README.md                    # This file
 ```
 
 ---
 
-## ⚙️ Scripts Disponibles
+## ⚙️ Available Scripts
 
 ```bash
-# Desarrollo
-pnpm dev              # Inicia servidor en http://localhost:3000
+# Development
+pnpm dev              # Starts server at http://localhost:3000
 
-# Producción
-pnpm build            # Compila para producción
-pnpm start            # Inicia servidor de producción
+# Production
+pnpm build            # Builds for production
+pnpm start            # Starts production server
 
-# Análisis y Calidad
-pnpm lint             # Ejecuta ESLint
-pnpm type-check       # Verifica tipos TypeScript
+# Analysis and Quality
+pnpm lint             # Runs ESLint
+pnpm type-check       # Checks TypeScript types
 
-# Limpieza
-pnpm clean            # Limpia .next y node_modules
+# Cleanup
+pnpm clean            # Cleans .next and node_modules
 ```
 
-### Ejemplos de Uso
+### Usage Examples
 
 ```bash
-# Desarrollo con hot-reload
+# Development with hot-reload
 pnpm dev
 
-# Compilar y verificar errores antes de deploy
+# Build and verify errors before deployment
 pnpm build && pnpm start
 
-# Verificar tipos antes de commit
+# Verify types before commit
 pnpm type-check && pnpm lint
 ```
 
 ---
 
-## 🏗️ Arquitectura
+## 🏗️ Architecture
 
-### Flujo de Datos
+### Data Flow
 
-```
+```text
 Frontend (Next.js/React)
        ↓
-   lib/api.ts (Cliente Supabase)
+   lib/api.ts (Supabase Client)
        ↓
    Supabase (PostgreSQL)
        ↓
-   BasketStats-Admin (maneja inserciones/actualizaciones)
+   BasketStats-Admin (handles inserts/updates)
 ```
 
-### Principios de Diseño
+### Design Principles
 
-1. **Lectura Únicamente**: BasketStats-Client **solo lee** de Supabase. No inserta, actualiza ni elimina datos.
-2. **Separación de Responsabilidades**: [BasketStats-Admin](https://github.com/tu-usuario/BasketStats-Admin) gestiona datos; este repo solo visualiza.
-3. **Tipado Fuerte**: TypeScript en 100% del código para máxima seguridad.
-4. **Componentes Modulares**: shadcn/ui + componentes custom, fáciles de mantener y reutilizar.
+1. **Read-Only**: BasketStats-Client **only reads** from Supabase. It does not insert, update, or delete data.
+2. **Separation of Responsibilities**: [BasketStats-Admin](https://github.com/your-username/BasketStats-Admin) manages data; this repo only visualizes it.
+3. **Strong Typing**: TypeScript in 100% of the code for maximum safety.
+4. **Modular Components**: shadcn/ui + custom components, easy to maintain and reuse.
 
-### Módulos Clave
+### Key Modules
 
-- **`lib/api.ts`**: Encapsula todas las queries a Supabase. Punto central para cambios en estructura de datos.
-- **`lib/auth-context.tsx`**: Maneja sesiones de usuario vía Supabase Auth.
-- **`components/ui/chart.tsx`**: Wrapper de Recharts con estilos personalizados.
-- **`components/chatbot/hoops-ai-chat.tsx`**: Integración con OpenAI para consultas de estadísticas.
+- **`lib/api.ts`**: Encapsulates all Supabase queries. Central point for data structure changes.
+- **`lib/auth-context.tsx`**: Handles user sessions via Supabase Auth.
+- **`components/ui/chart.tsx`**: Recharts wrapper with custom styles.
+- **`components/chatbot/hoops-ai-chat.tsx`**: OpenAI integration for stats queries.
 
 ---
 
-## ✨ Características
+## ✨ Features
 
 ### 📊 Dashboard
-- KPIs de jugadores y equipos
-- Gráficos de tendencias en tiempo real
-- Resumen de próximos partidos
-- Jugador de la semana
+- Player and team KPIs
+- Real-time trend charts
+- Upcoming games summary
+- Player of the week
 
-### 🎯 Análisis de Partidos
-- **Box Score**: Estadísticas completas jugador por jugador
-- **Play-by-Play**: Momento a momento del partido
-- **Shooting Charts**: Gráficos de efectividad de tiro (FEB)
-- **Scoring Runs**: Rachas de puntuación
-- **Win Probability**: Pronóstico de victoria en tiempo real
+### 🎯 Game Analysis
+- **Box Score**: Full player-by-player statistics
+- **Play-by-Play**: Moment-by-moment game timeline
+- **Shooting Charts**: Shot effectiveness charts (FEB)
+- **Scoring Runs**: Scoring streaks
+- **Win Probability**: Real-time win prediction
 
-### 👤 Análisis de Jugadores
-- Tendencias históricas (puntos, rebotes, asistencias)
-- Análisis **Clutch Time** (últimos 5 minutos decisivos)
-- **Impact Score**: Métricas de impacto agregadas
-- **Skill Analysis**: Análisis de habilidades específicas
-- Comparación de sinergias con compañeros
+### 👤 Player Analysis
+- Historical trends (points, rebounds, assists)
+- **Clutch Time** analysis (last decisive 5 minutes)
+- **Impact Score**: Aggregated impact metrics
+- **Skill Analysis**: Specific skill breakdowns
+- Synergy comparison with teammates
 
-### 🔍 Scouting Avanzado
-- **Análisis Defensivo**: Brechas defensivas por posición
-- **Comparativa de Sinergias**: Cómo trabajan juntos los jugadores
-- **Amenazas Clave**: Identificación de puntuadores principales
-- **Historial de Matchups**: Desempeño en enfrentamientos previos
-- **Análisis de Cuatro Factores**: Efidencia ofensiva, rebote, turnovers, tiros libres
+### 🔍 Advanced Scouting
+- **Defensive Analysis**: Defensive gaps by position
+- **Synergy Comparison**: How players perform together
+- **Key Threats**: Identification of top scorers
+- **Matchup History**: Performance in previous matchups
+- **Four Factors Analysis**: Offensive efficiency, rebounding, turnovers, free throws
 
-### ⚙️ Gestión de Equipos
-- Plantillas y alineaciones
-- Análisis de estadísticas agregadas
-- Gráficos de tiro a nivel de equipo
+### ⚙️ Team Management
+- Rosters and lineups
+- Aggregated stats analysis
+- Team-level shooting charts
 - Lineup analysis
 
-### 📅 Calendario
-- Partidos próximos y pasados
-- Filtrado por equipo/fecha
-- Integración con game-center
+### 📅 Calendar
+- Upcoming and past games
+- Team/date filtering
+- Game-center integration
 
 ### 💬 HoopsAI Chatbot
-- Consultas sobre estadísticas en lenguaje natural
-- Integración con OpenAI GPT-4
-- Contexto de datos de Supabase
-- Respuestas personalizadas por equipo/jugador
+- Natural language stat queries
+- OpenAI GPT-4 integration
+- Supabase data context
+- Team/player-customized responses
 
 ---
 
-## 🔌 Integración API
+## 🔌 API Integration
 
-### Estructura de `lib/api.ts`
+### `lib/api.ts` Structure
 
-La capa de API de BasketStats-Client encapsula todas las queries a Supabase:
+BasketStats-Client’s API layer encapsulates all Supabase queries:
 
 ```typescript
 import { supabase } from './supabase';
 
-// Ejemplo: Obtener estadísticas de un jugador
+// Example: Get player statistics
 export async function getPlayerStats(playerId: string) {
   const { data, error } = await supabase
     .from('players')
@@ -306,7 +306,7 @@ export async function getPlayerStats(playerId: string) {
   return data;
 }
 
-// Ejemplo: Obtener box score de un partido
+// Example: Get game box score
 export async function getGameBoxScore(gameId: string) {
   const { data, error } = await supabase
     .from('game_stats')
@@ -318,9 +318,9 @@ export async function getGameBoxScore(gameId: string) {
 }
 ```
 
-### Agregar una Nueva Query
+### Add a New Query
 
-1. **Define el tipo en `lib/types.ts`**:
+1. **Define the type in `lib/types.ts`**:
 
 ```typescript
 export interface PlayerTendency {
@@ -331,7 +331,7 @@ export interface PlayerTendency {
 }
 ```
 
-2. **Agrega la función en `lib/api.ts`**:
+2. **Add the function in `lib/api.ts`**:
 
 ```typescript
 export async function getPlayerTendencies(playerId: string) {
@@ -346,7 +346,7 @@ export async function getPlayerTendencies(playerId: string) {
 }
 ```
 
-3. **Úsalo en un componente**:
+3. **Use it in a component**:
 
 ```typescript
 import { getPlayerTendencies } from '@/lib/api';
@@ -362,30 +362,30 @@ export default function TrendsComponent({ playerId }: { playerId: string }) {
 }
 ```
 
-### Cambios en Estructura de Datos
+### Data Structure Changes
 
-Si **BasketStats-Admin** modifica la estructura de tablas en Supabase:
+If **BasketStats-Admin** modifies the Supabase table structure:
 
-1. Actualiza los tipos en `lib/types.ts`
-2. Modifica las queries en `lib/api.ts`
-3. Actualiza componentes que usen esos datos
-4. Ejecuta `pnpm type-check` para validar
+1. Update types in `lib/types.ts`
+2. Modify queries in `lib/api.ts`
+3. Update components that use that data
+4. Run `pnpm type-check` to validate
 
 ---
 
 ## 🚀 Deployment
 
-### Despliegue en Vercel (Recomendado)
+### Deploy on Vercel (Recommended)
 
-1. **Conecta tu repositorio a Vercel**:
-   - Ve a [Vercel Dashboard](https://vercel.com/dashboard)
-   - Click en "Add New..." → "Project"
-   - Selecciona tu repositorio de GitHub
+1. **Connect your repository to Vercel**:
+   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
+   - Click "Add New..." → "Project"
+   - Select your GitHub repository
 
-2. **Configura variables de entorno**:
-   - Ve a Settings → Environment Variables
-   - Agrega las variables del `.env.local`:
-     ```
+2. **Configure environment variables**:
+   - Go to Settings → Environment Variables
+   - Add variables from `.env.local`:
+     ```text
      NEXT_PUBLIC_SUPABASE_URL
      NEXT_PUBLIC_SUPABASE_ANON_KEY
      NEXT_PUBLIC_OPENAI_API_KEY
@@ -395,9 +395,9 @@ Si **BasketStats-Admin** modifica la estructura de tablas en Supabase:
    ```bash
    git push origin main
    ```
-   Vercel auto-compila y despliega.
+   Vercel automatically builds and deploys.
 
-### Despliegue en Docker
+### Deploy with Docker
 
 ```dockerfile
 FROM node:18-alpine
@@ -423,59 +423,59 @@ docker run -e NEXT_PUBLIC_SUPABASE_URL=... -p 3000:3000 basketstats-client
 
 ---
 
-## 🤝 Contribuir
+## 🤝 Contributing
 
-Agradecemos contribuciones 💙. Sigue estos pasos:
+We welcome contributions 💙. Follow these steps:
 
-### Flujo de Trabajo
+### Workflow
 
-1. **Fork** el repositorio
-2. Crea una rama feature:
+1. **Fork** the repository
+2. Create a feature branch:
    ```bash
-   git checkout -b feature/mi-feature
+   git checkout -b feature/my-feature
    ```
-3. Realiza cambios y prueba:
+3. Make changes and test:
    ```bash
    pnpm dev
    ```
-4. Verifica tipos y lint:
+4. Check types and lint:
    ```bash
    pnpm type-check && pnpm lint
    ```
-5. Commit con mensajes descriptivos:
+5. Commit with descriptive messages:
    ```bash
-   git commit -m "feat: agregar análisis de clutch time"
+   git commit -m "feat: add clutch-time analysis"
    ```
-6. Push y crea un Pull Request:
+6. Push and create a Pull Request:
    ```bash
-   git push origin feature/mi-feature
+   git push origin feature/my-feature
    ```
 
-### Convenciones
+### Conventions
 
-- **Commits**: Usa [Conventional Commits](https://www.conventionalcommits.org/)
-  - `feat:` - Nueva funcionalidad
+- **Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/)
+  - `feat:` - New functionality
   - `fix:` - Bug fix
-  - `docs:` - Cambios en documentación
-  - `style:` - Formateo (sin cambios lógicos)
-  - `refactor:` - Refactorización
-- **Componentes**: Usa PascalCase, define props con interfaces
-- **Archivos**: Usa kebab-case para nombres de archivos
+  - `docs:` - Documentation changes
+  - `style:` - Formatting (no logic changes)
+  - `refactor:` - Refactoring
+- **Components**: Use PascalCase, define props with interfaces
+- **Files**: Use kebab-case for filenames
 
 ---
 
-## 🔗 Repositorio Relacionado
+## 🔗 Related Repository
 
-**[BasketStats-Admin](https://github.com/tu-usuario/BasketStats-Admin)** (Administración de Datos)
+**[BasketStats-Admin](https://github.com/your-username/BasketStats-Admin)** (Data Administration)
 
-- **Lenguaje**: Python + Streamlit
-- **Responsabilidad**: Inserción, actualización y validación de datos
-- **Datos**: Comunica exclusivamente con Supabase
+- **Language**: Python + Streamlit
+- **Responsibility**: Data insertion, updates, and validation
+- **Data**: Communicates exclusively with Supabase
 
-**Nota sobre Separación**: BasketStats-Client y BasketStats-Admin son repositorios **independientes** sin acoplamiento de código. La comunicación es únicamente a través de Supabase. Esto permite:
-- Escalabilidad independiente
-- Cambios en Admin sin afectar Client
-- Equipos trabajando en paralelo
+**Separation Note**: BasketStats-Client and BasketStats-Admin are **independent** repositories without code coupling. Communication happens only through Supabase. This enables:
+- Independent scalability
+- Changes in Admin without affecting Client
+- Teams working in parallel
 
 ---
 
@@ -483,26 +483,26 @@ Agradecemos contribuciones 💙. Sigue estos pasos:
 
 ### ❌ Error: "Supabase not configured"
 
-**Causa**: Variables de entorno faltantes.
+**Cause**: Missing environment variables.
 
-**Solución**:
+**Solution**:
 ```bash
-# Verifica que .env.local exista y contenga:
+# Check that .env.local exists and contains:
 cat .env.local
-# Debe tener NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY
+# It must include NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# Reinicia el servidor
+# Restart server
 pnpm dev
 ```
 
 ### ❌ Error: "Authentication failed"
 
-**Causa**: Credenciales de Supabase incorrectas o sesión expirada.
+**Cause**: Incorrect Supabase credentials or expired session.
 
-**Solución**:
+**Solution**:
 ```bash
-# Verifica credenciales en Supabase Dashboard
-# Limpia caché local
+# Check credentials in Supabase Dashboard
+# Clear local cache
 rm -rf .next node_modules
 pnpm install
 pnpm dev
@@ -510,57 +510,57 @@ pnpm dev
 
 ### ❌ Error: "Module not found"
 
-**Causa**: Dependencias incompletas o versión de Node.js incompatible.
+**Cause**: Incomplete dependencies or incompatible Node.js version.
 
-**Solución**:
+**Solution**:
 ```bash
-# Verifica Node.js v18+
+# Check Node.js v18+
 node --version
 
-# Reinstala dependencias
+# Reinstall dependencies
 pnpm install
 pnpm build
 ```
 
-### ❌ Componentes no se actualizan
+### ❌ Components are not updating
 
-**Causa**: Hot reload fallido o caché de navegador.
+**Cause**: Hot reload failure or browser cache.
 
-**Solución**:
+**Solution**:
 ```bash
-# Hard refresh en navegador (Ctrl+Shift+R o Cmd+Shift+R)
-# O limpia caché Next.js
+# Hard refresh in browser (Ctrl+Shift+R or Cmd+Shift+R)
+# Or clear Next.js cache
 rm -rf .next
 pnpm dev
 ```
 
-### ❌ Errores de TypeScript
+### ❌ TypeScript errors
 
-**Causa**: Tipos desactualizados o cambios en Supabase.
+**Cause**: Outdated types or Supabase changes.
 
-**Solución**:
+**Solution**:
 ```bash
-# Regenera tipos de Supabase
+# Regenerate/check Supabase types
 pnpm type-check
 
-# Si hay discrepancias, actualiza lib/types.ts
-# Asegúrate que columnas en Supabase coincidan con tipos
+# If there are mismatches, update lib/types.ts
+# Make sure Supabase columns match types
 ```
 
 ---
 
-## 📄 Licencia
+## 📄 License
 
-Este proyecto está bajo licencia **MIT**. Ver [LICENSE](./LICENSE) para más detalles.
-
----
-
-## 📞 Soporte
-
-- **Issues**: Abre un issue en el repositorio si encuentras bugs
-- **Discussions**: Usa Discussions para preguntas y debates
-- **Email**: [tu-email@ejemplo.com]
+This project is licensed under the **MIT** License. See [LICENSE](./LICENSE) for more details.
 
 ---
 
-**Hecho con ❤️ para la comunidad de baloncesto.**
+## 📞 Support
+
+- **Issues**: Open an issue in the repository if you find bugs
+- **Discussions**: Use Discussions for questions and debates
+- **Email**: [your-email@example.com]
+
+---
+
+**Made with ❤️ for the basketball community.**
